@@ -4,6 +4,7 @@ import AppKit
 struct ContentView: View {
     @EnvironmentObject private var editor: EditorStateMachine
     @EnvironmentObject private var speech: WhisperKitBackend
+    @EnvironmentObject private var focusedInput: FocusedInputBridge
     @State private var complement = ""
     @State private var showingExporter = false
     @State private var exportDocument = JSONFileDocument(data: Data())
@@ -43,6 +44,11 @@ struct ContentView: View {
             Button(speech.isListening ? "중지" : "말하기 시작") { speech.toggle() }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut("r", modifiers: [.command, .shift])
+            Button(speech.isListening ? "전역 입력 중지" : "전역 받아쓰기") {
+                focusedInput.toggleDictation()
+            }
+            .disabled(speech.isListening && !focusedInput.isDictationSession)
+            .help("녹음은 항상 시작합니다. 자동 붙여넣기 권한이 없으면 결과가 클립보드에 복사됩니다.")
         }
         .padding(16)
     }
@@ -92,6 +98,12 @@ struct ContentView: View {
 
     private var controlBar: some View {
         HStack(spacing: 10) {
+            Button("전역 입력 연동") { focusedInput.install() }
+                .help("⌥ Space로 시작합니다. 말소리와 키 입력이 모두 1.5초 멈추면 현재 포커스된 입력창에 붙여넣습니다.")
+            Text(focusedInput.status)
+                .font(.caption)
+                .foregroundStyle(focusedInput.isInstalled ? Color.secondary : Color.orange)
+                .lineLimit(1)
             Button("확정 ↩") { editor.commitDraft() }
             Button("새 문단 ⇧↩") { editor.commitParagraph() }
             Button("Draft 취소 Esc") { editor.cancelDraft() }

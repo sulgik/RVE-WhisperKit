@@ -12,6 +12,7 @@ final class EditorStateMachine: ObservableObject {
     private var segmentSeedDraft = ""
     private var voiceCommandUndoRegistered = false
     private var lastHypothesisActionSignature = ""
+    private var insertionSessionActive = false
 
     private let commands: [(phrases: [String], action: CommandAction)] = [
         (["아니 다시", "아니, 다시", "다시 말할게", "다시 말하겠습니다", "처음부터 다시"], .restartDraft),
@@ -28,6 +29,35 @@ final class EditorStateMachine: ObservableObject {
         segmentSeedDraft = draftText
         voiceCommandUndoRegistered = false
         lastHypothesisActionSignature = ""
+    }
+
+    /// A global-hotkey dictation session always starts with a clean buffer so a
+    /// later paste cannot include text from an earlier destination app.
+    func beginInsertionSession() {
+        committedText = ""
+        draftText = ""
+        undoStack.removeAll()
+        insertionSessionActive = true
+        beginRecognitionSegment()
+        lastEvent = "INSERTION_SESSION_START"
+        log("INSERTION_SESSION_START")
+    }
+
+    var insertionSessionText: String {
+        guard insertionSessionActive else { return "" }
+        return [committedText, draftText]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
+    func finishInsertionSession() {
+        insertionSessionActive = false
+        committedText = ""
+        draftText = ""
+        beginRecognitionSegment()
+        lastEvent = "INSERTION_SESSION_PASTED"
+        log("INSERTION_SESSION_PASTED")
     }
 
     /// Replays the current ASR hypothesis from the segment seed. This makes partial-result
