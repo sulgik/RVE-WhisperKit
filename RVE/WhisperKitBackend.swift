@@ -7,10 +7,8 @@ final class WhisperKitBackend: ObservableObject, SpeechBackend {
     @Published private(set) var isListening = false
     @Published private(set) var status = "모델 준비 전"
     @Published private(set) var lastLatencyMS: Int?
-    @Published var modelName = "tiny"
+    @Published var modelName = "base"
 
-    /// Set by the focused-input bridge. Regular in-app recording still stops on
-    /// silence, but only an active bridge session pastes into another app.
     var onNaturalStop: (() -> Void)?
 
     private var whisperKit: WhisperKit?
@@ -23,13 +21,9 @@ final class WhisperKitBackend: ObservableObject, SpeechBackend {
     private var lastVoiceAt: ContinuousClock.Instant?
     private var lastTypingAt: ContinuousClock.Instant?
 
-    /// A short rolling-window implementation chosen for MVP stability.
-    /// It produces partial hypotheses every ~700 ms without waiting for Enter.
-    // Check silence frequently; `minimumNewSamples` still keeps ASR updates at
-    // roughly 700 ms rather than decoding on every timer tick.
     private let pollInterval = Duration.milliseconds(350)
-    private let minimumNewSamples = 8_000       // ~0.5 sec at 16 kHz
-    private let maxWindowSamples = 160_000      // 10 sec at 16 kHz
+    private let minimumNewSamples = 8_000
+    private let maxWindowSamples = 160_000
     private let silenceLimit = Duration.milliseconds(1_500)
     private let voiceRMSFloor: Float = 0.022
     private let relativeVoiceFloor: Float = 0.3
@@ -77,6 +71,69 @@ final class WhisperKitBackend: ObservableObject, SpeechBackend {
         }
     }
 
+    // MARK: - Dedicated Walkie-Talkie (Push-to-Talk) Methods
+    func startPTT() {
+        guard !isListening else { return }
+        Task {
+            if whisperKit == nil { await prepare() }
+            guard let whisperKit else { return }
+
+            do {
+                try whisperKit.audioProcessor.startRecordingLive(inputDeviceID: nil) { _ in }
+                isListening = true
+                status = "🎙️ 워키토키 녹음 중…"
+            } catch {
+                status = "마이크 시작 실패: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func finishPTTAndTranscribe(completion: @escaping (String) -> Void) {
+        guard isListening, let whisperKit else {
+            isListening = false
+            status = "중지됨"
+            completion("")
+            return
+        }
+
+        whisperKit.audioProcessor.stopRecording()
+        isListening = false
+        status = "⏳ Whisper AI 변환 중…"
+
+        let samples = whisperKit.audioProcessor.audioSamples
+        guard !samples.isEmpty else {
+            status = "녹음된 음성이 없습니다"
+            completion("")
+            return
+        }
+
+        Task {
+            let started = ContinuousClock.now
+            do {
+                let options = DecodingOptions(
+                    task: .transcribe,
+                    language: "ko",
+                    temperature: 0,
+                    skipSpecialTokens: true,
+                    withoutTimestamps: true,
+                    wordTimestamps: false
+                )
+                let results = try await whisperKit.transcribe(audioArray: samples, decodeOptions: options)
+                let text = results.map(\.text).joined(separator: " ")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+
+                let elapsed = started.duration(to: .now)
+                let ms = Self.milliseconds(elapsed)
+                self.lastLatencyMS = ms
+                self.status = text.isEmpty ? "인식 결과 없음" : "완료 (\(ms)ms)"
+                completion(text)
+            } catch {
+                self.status = "인식 오류: \(error.localizedDescription)"
+                completion("")
+            }
+        }
+    }
+
     func stop() {
         pollingTask?.cancel()
         pollingTask = nil
@@ -86,21 +143,6 @@ final class WhisperKitBackend: ObservableObject, SpeechBackend {
         hasDetectedSpeech = false
         lastVoiceAt = nil
         lastTypingAt = nil
-    }
-
-    func finishAndTranscribeFinal(completion: @escaping () -> Void) {
-        pollingTask?.cancel()
-        pollingTask = nil
-        guard isListening, let whisperKit else {
-            stop()
-            completion()
-            return
-        }
-        Task {
-            await transcribeCurrentWindowIfNeeded(force: true)
-            stop()
-            completion()
-        }
     }
 
     func reloadModel() async {
@@ -154,9 +196,6 @@ final class WhisperKitBackend: ObservableObject, SpeechBackend {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { return }
 
-            // A decoder can hallucinate short text over silence. It may confirm
-            // that this session contained speech, but it must never refresh the
-            // physical voice-activity clock used for automatic stopping.
             hasDetectedSpeech = true
             if lastVoiceAt == nil { lastVoiceAt = .now }
 
@@ -166,8 +205,6 @@ final class WhisperKitBackend: ObservableObject, SpeechBackend {
             lastProcessedSampleCount = samples.count
             editor?.applyRecognitionHypothesis(text, latencyMS: ms)
 
-            // Make a completed window the next segment's immutable seed. Keep audio that
-            // arrived while decoding so continuous listening never drops fresh samples.
             if samples.count >= maxWindowSamples {
                 editor?.beginRecognitionSegment()
                 let arrivedDuringDecode = max(0, whisperKit.audioProcessor.audioSamples.count - samples.count)
@@ -179,9 +216,6 @@ final class WhisperKitBackend: ObservableObject, SpeechBackend {
         }
     }
 
-    /// WhisperKit already maintains energy relative to the quietest recent input.
-    /// Prefer that adaptive value so a steady fan or room noise becomes the silence
-    /// baseline instead of keeping the session alive forever.
     private func shouldStopForSilence() -> Bool {
         guard let whisperKit else { return false }
         let samples = whisperKit.audioProcessor.audioSamples
@@ -194,8 +228,6 @@ final class WhisperKitBackend: ObservableObject, SpeechBackend {
         let absoluteRMS = meanSquare.squareRoot()
         let voiceDetected: Bool
         if relativeEnergy.count >= 3 {
-            // Relative energy adapts to the room, while the small absolute floor
-            // prevents microphone self-noise from repeatedly resetting the timer.
             voiceDetected = absoluteRMS >= 0.01
                 && relativeEnergy.suffix(3).contains { $0 >= relativeVoiceFloor }
         } else {
@@ -214,8 +246,6 @@ final class WhisperKitBackend: ObservableObject, SpeechBackend {
         return noRecentVoice && noRecentTyping
     }
 
-    /// Called by the global shortcut monitor. Typing while dictating is treated
-    /// as active editing, so a pause in speech cannot paste over a correction.
     func registerTypingActivity() {
         guard isListening else { return }
         lastTypingAt = .now

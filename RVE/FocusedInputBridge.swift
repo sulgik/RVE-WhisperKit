@@ -49,7 +49,6 @@ final class FocusedInputBridge: ObservableObject {
     private func reinstallHotkey() {
         removeMonitors()
         
-        // Only trigger natural stop (VAD silence auto-paste) in toggle mode
         if pttKeyMode == .toggleOptionSpace {
             speech?.onNaturalStop = { [weak self] in
                 self?.pasteCompletedSession()
@@ -117,10 +116,7 @@ final class FocusedInputBridge: ObservableObject {
             }
         }
 
-        // Monitor when OTHER apps are active (Global)
         globalMonitorFlags = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged, handler: handleEvent)
-
-        // Monitor when RVE ITSELF is active (Local)
         localMonitorFlags = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
             handleEvent(event)
             return event
@@ -173,22 +169,21 @@ final class FocusedInputBridge: ObservableObject {
         _ = optionSpaceHotkey?.start()
     }
 
-    // MARK: - PTT Lifecycle
+    // MARK: - Walkie-Talkie (PTT) Lifecycle
     func startPTTSession() {
-        guard let editor, let speech else { return }
+        guard let speech else { return }
         isPTTActive = true
-        editor.beginInsertionSession()
         isDictationSession = true
-        speech.start()
+        speech.startPTT()
         status = "🎙️ 말하는 중… (키를 떼면 즉시 변환)"
     }
 
     func stopPTTSessionAndPaste() {
         guard isPTTActive, let speech else { return }
         isPTTActive = false
-        status = "⏳ 변환 및 입력 중…"
-        speech.finishAndTranscribeFinal { [weak self] in
-            self?.pasteCompletedSession()
+        status = "⏳ Whisper AI 변환 및 입력 중…"
+        speech.finishPTTAndTranscribe { [weak self] text in
+            self?.pasteTextDirectly(text)
         }
     }
 
@@ -206,8 +201,32 @@ final class FocusedInputBridge: ObservableObject {
         }
     }
 
+    private func pasteTextDirectly(_ text: String) {
+        guard isDictationSession else { return }
+        isDictationSession = false
+        
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            status = "인식된 내용이 없습니다"
+            return
+        }
+        copyToPasteboard(trimmed)
+        if hasPastePermission() {
+            postPasteShortcut()
+            if autoSend {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
+                    self?.postReturnKey()
+                    self?.status = "입력창에 붙여넣고 Enter 전송 완료"
+                }
+            } else {
+                status = "현재 입력창에 붙여넣음"
+            }
+        } else {
+            status = "클립보드에 복사됨 · 대상 앱에서 ⌘V"
+        }
+    }
+
     private func pasteCompletedSession() {
-        // Prevent duplicate execution of paste logic
         guard isDictationSession, let editor else { return }
         isDictationSession = false
         
