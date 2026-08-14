@@ -63,9 +63,21 @@ final class EditorStateMachine: ObservableObject {
     /// Replays the current ASR hypothesis from the segment seed. This makes partial-result
     /// revisions deterministic and prevents the same spoken command from firing twice.
     func applyRecognitionHypothesis(_ transcript: String, latencyMS: Int?) {
+        let cleanText = transcript.normalizedSpaces
+        if insertionSessionActive {
+            committedText = ""
+            draftText = cleanText
+            lastEvent = "실시간 인식"
+            log("TRANSCRIPT_UPDATE", detail: cleanText, latencyMS: latencyMS)
+            if let latencyMS {
+                log("LATENCY", detail: "transcription", latencyMS: latencyMS)
+            }
+            return
+        }
+
         var workingCommitted = segmentSeedCommitted
         var workingDraft = segmentSeedDraft
-        var remaining = transcript.normalizedSpaces
+        var remaining = cleanText
         var actions: [String] = []
 
         while let match = earliestCommand(in: remaining) {
