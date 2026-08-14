@@ -3,7 +3,9 @@ import ApplicationServices
 import Carbon.HIToolbox
 
 enum PTTKeyMode: String, CaseIterable, Identifiable {
+    case anyOption = "Option (⌥) 누르고 있기 (양쪽)"
     case rightOption = "오른쪽 Option (⌥)"
+    case leftOption = "왼쪽 Option (⌥)"
     case optionSpaceHold = "Option + Space (홀드)"
     case toggleOptionSpace = "Option + Space (토글)"
     
@@ -18,7 +20,7 @@ final class FocusedInputBridge: ObservableObject {
     @Published private(set) var isInstalled = false
     @Published private(set) var isDictationSession = false
     @Published var autoSend: Bool = true
-    @Published var pttKeyMode: PTTKeyMode = .rightOption {
+    @Published var pttKeyMode: PTTKeyMode = .anyOption {
         didSet {
             reinstallHotkey()
         }
@@ -50,13 +52,17 @@ final class FocusedInputBridge: ObservableObject {
         if CGPreflightPostEventAccess() {
             status = "준비됨 (\(pttKeyMode.rawValue)) · 전역 입력 가동 중"
         } else {
-            status = "준비됨 · 접근성 권한 필요"
+            status = "준비됨 · 접근성(Accessibility) 권한 필요"
             CGRequestPostEventAccess()
         }
 
         switch pttKeyMode {
+        case .anyOption:
+            installOptionKeyPTT(allowedKeyCodes: [58, 61]) // 58 = Left Option, 61 = Right Option
         case .rightOption:
-            installRightOptionPTT()
+            installOptionKeyPTT(allowedKeyCodes: [61])
+        case .leftOption:
+            installOptionKeyPTT(allowedKeyCodes: [58])
         case .optionSpaceHold:
             installOptionSpaceHoldPTT()
         case .toggleOptionSpace:
@@ -76,12 +82,12 @@ final class FocusedInputBridge: ObservableObject {
         optionSpaceHotkey = nil
     }
 
-    // MARK: - Right Option PTT (Virtual Key 61)
-    private func installRightOptionPTT() {
+    // MARK: - Option Key PTT (Virtual Key 58: Left Option, 61: Right Option)
+    private func installOptionKeyPTT(allowedKeyCodes: [UInt16]) {
         globalMonitorFlags = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             DispatchQueue.main.async {
                 guard let self else { return }
-                if event.keyCode == 61 { // 61 = Right Option on Mac
+                if allowedKeyCodes.contains(event.keyCode) {
                     let isPressed = event.modifierFlags.contains(.option)
                     if isPressed && !self.isPTTActive {
                         self.startPTTSession()
