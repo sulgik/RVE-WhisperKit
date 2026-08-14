@@ -40,9 +40,6 @@ final class FocusedInputBridge: ObservableObject {
     func connect(editor: EditorStateMachine, speech: WhisperKitBackend) {
         self.editor = editor
         self.speech = speech
-        speech.onNaturalStop = { [weak self] in
-            self?.pasteCompletedSession()
-        }
     }
 
     func install() {
@@ -51,6 +48,15 @@ final class FocusedInputBridge: ObservableObject {
 
     private func reinstallHotkey() {
         removeMonitors()
+        
+        // Only trigger natural stop (VAD silence auto-paste) in toggle mode
+        if pttKeyMode == .toggleOptionSpace {
+            speech?.onNaturalStop = { [weak self] in
+                self?.pasteCompletedSession()
+            }
+        } else {
+            speech?.onNaturalStop = nil
+        }
         
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         let isTrusted = AXIsProcessTrustedWithOptions(options)
@@ -201,10 +207,12 @@ final class FocusedInputBridge: ObservableObject {
     }
 
     private func pasteCompletedSession() {
+        // Prevent duplicate execution of paste logic
         guard isDictationSession, let editor else { return }
+        isDictationSession = false
+        
         let text = editor.insertionSessionText
         guard !text.isEmpty else {
-            isDictationSession = false
             status = "인식된 내용이 없습니다"
             return
         }
@@ -222,7 +230,6 @@ final class FocusedInputBridge: ObservableObject {
         } else {
             status = "클립보드에 복사됨 · 대상 앱에서 ⌘V"
         }
-        isDictationSession = false
         editor.finishInsertionSession()
     }
 
