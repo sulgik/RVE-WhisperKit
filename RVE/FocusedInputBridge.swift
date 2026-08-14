@@ -19,7 +19,7 @@ final class FocusedInputBridge: ObservableObject {
     @Published private(set) var status = "단축키 준비 전"
     @Published private(set) var isInstalled = false
     @Published private(set) var isDictationSession = false
-    @Published var autoSend: Bool = true
+    @Published var autoSend: Bool = false
     @Published var pttKeyMode: PTTKeyMode = .anyOption {
         didSet {
             reinstallHotkey()
