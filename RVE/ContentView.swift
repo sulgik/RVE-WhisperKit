@@ -13,6 +13,8 @@ struct ContentView: View {
         VStack(spacing: 0) {
             header
             Divider()
+            globalSettingsBanner
+            Divider()
             editorPane
             Divider()
             controlBar
@@ -26,8 +28,8 @@ struct ContentView: View {
     private var header: some View {
         HStack {
             VStack(alignment: .leading, spacing: 3) {
-                Text("RVE").font(.title2.bold())
-                Text("Realtime Voice Editor · WhisperKit 로컬 스트리밍 MVP")
+                Text("RVE · 전역 음성 입력기").font(.title2.bold())
+                Text("WhisperKit 로컬 초저지연 Push-to-Talk (Claude Desktop, Slack, VS Code 등 지원)")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
@@ -44,13 +46,42 @@ struct ContentView: View {
             Button(speech.isListening ? "중지" : "말하기 시작") { speech.toggle() }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut("r", modifiers: [.command, .shift])
-            Button(speech.isListening ? "전역 입력 중지" : "전역 받아쓰기") {
-                focusedInput.toggleDictation()
-            }
-            .disabled(speech.isListening && !focusedInput.isDictationSession)
-            .help("녹음은 항상 시작합니다. 자동 붙여넣기 권한이 없으면 결과가 클립보드에 복사됩니다.")
         }
         .padding(16)
+    }
+
+    private var globalSettingsBanner: some View {
+        HStack(spacing: 16) {
+            HStack(spacing: 8) {
+                Image(systemName: "hand.tap.fill")
+                    .foregroundStyle(.blue)
+                Picker("워키토키(PTT) 단축키", selection: $focusedInput.pttKeyMode) {
+                    ForEach(PTTKeyMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+            
+            Toggle(isOn: $focusedInput.autoSend) {
+                HStack(spacing: 4) {
+                    Image(systemName: "return")
+                        .foregroundStyle(.green)
+                    Text("붙여넣기 후 Enter 자동 전송 (Claude / 메신저용)")
+                        .font(.callout)
+                }
+            }
+            .toggleStyle(.checkbox)
+
+            Spacer()
+            
+            Text(focusedInput.status)
+                .font(.caption.bold())
+                .foregroundStyle(focusedInput.isInstalled ? .green : .orange)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Color.secondary.opacity(0.08))
     }
 
     private var statusBadge: some View {
@@ -98,12 +129,8 @@ struct ContentView: View {
 
     private var controlBar: some View {
         HStack(spacing: 10) {
-            Button("전역 입력 연동") { focusedInput.install() }
-                .help("⌥ Space로 시작합니다. 말소리와 키 입력이 모두 1.5초 멈추면 현재 포커스된 입력창에 붙여넣습니다.")
-            Text(focusedInput.status)
-                .font(.caption)
-                .foregroundStyle(focusedInput.isInstalled ? Color.secondary : Color.orange)
-                .lineLimit(1)
+            Button("전역 입력 재설치") { focusedInput.install() }
+                .help("선택한 PTT 단축키로 활성화된 앱 입력창에 전역 입력 기능을 재설치합니다.")
             Button("확정 ↩") { editor.commitDraft() }
             Button("새 문단 ⇧↩") { editor.commitParagraph() }
             Button("Draft 취소 Esc") { editor.cancelDraft() }

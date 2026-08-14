@@ -88,6 +88,21 @@ final class WhisperKitBackend: ObservableObject, SpeechBackend {
         lastTypingAt = nil
     }
 
+    func finishAndTranscribeFinal(completion: @escaping () -> Void) {
+        pollingTask?.cancel()
+        pollingTask = nil
+        guard isListening, let whisperKit else {
+            stop()
+            completion()
+            return
+        }
+        Task {
+            await transcribeCurrentWindowIfNeeded(force: true)
+            stop()
+            completion()
+        }
+    }
+
     func reloadModel() async {
         stop()
         whisperKit = nil
