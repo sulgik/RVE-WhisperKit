@@ -29,8 +29,11 @@ final class FocusedInputBridge: ObservableObject {
     private weak var editor: EditorStateMachine?
     private weak var speech: WhisperKitBackend?
     private var globalMonitorFlags: Any?
+    private var localMonitorFlags: Any?
     private var globalMonitorKeyDown: Any?
+    private var localMonitorKeyDown: Any?
     private var globalMonitorKeyUp: Any?
+    private var localMonitorKeyUp: Any?
     private var optionSpaceHotkey: OptionSpaceHotkey?
     private var isPTTActive = false
 
@@ -49,10 +52,13 @@ final class FocusedInputBridge: ObservableObject {
     private func reinstallHotkey() {
         removeMonitors()
         
-        if CGPreflightPostEventAccess() {
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        let isTrusted = AXIsProcessTrustedWithOptions(options)
+
+        if isTrusted || CGPreflightPostEventAccess() {
             status = "준비됨 (\(pttKeyMode.rawValue)) · 전역 입력 가동 중"
         } else {
-            status = "준비됨 · 접근성(Accessibility) 권한 필요"
+            status = "⚠️ 접근성 권한 필요 (시스템 설정 > 손쉬운 사용에서 RVE 허용)"
             CGRequestPostEventAccess()
         }
 
@@ -74,17 +80,24 @@ final class FocusedInputBridge: ObservableObject {
 
     private func removeMonitors() {
         if let globalMonitorFlags { NSEvent.removeMonitor(globalMonitorFlags) }
+        if let localMonitorFlags { NSEvent.removeMonitor(localMonitorFlags) }
         if let globalMonitorKeyDown { NSEvent.removeMonitor(globalMonitorKeyDown) }
+        if let localMonitorKeyDown { NSEvent.removeMonitor(localMonitorKeyDown) }
         if let globalMonitorKeyUp { NSEvent.removeMonitor(globalMonitorKeyUp) }
+        if let localMonitorKeyUp { NSEvent.removeMonitor(localMonitorKeyUp) }
+        
         globalMonitorFlags = nil
+        localMonitorFlags = nil
         globalMonitorKeyDown = nil
+        localMonitorKeyDown = nil
         globalMonitorKeyUp = nil
+        localMonitorKeyUp = nil
         optionSpaceHotkey = nil
     }
 
     // MARK: - Option Key PTT (Virtual Key 58: Left Option, 61: Right Option)
     private func installOptionKeyPTT(allowedKeyCodes: [UInt16]) {
-        globalMonitorFlags = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+        let handleEvent: (NSEvent) -> Void = { [weak self] event in
             DispatchQueue.main.async {
                 guard let self else { return }
                 if allowedKeyCodes.contains(event.keyCode) {
@@ -97,11 +110,20 @@ final class FocusedInputBridge: ObservableObject {
                 }
             }
         }
+
+        // Monitor when OTHER apps are active (Global)
+        globalMonitorFlags = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged, handler: handleEvent)
+
+        // Monitor when RVE ITSELF is active (Local)
+        localMonitorFlags = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
+            handleEvent(event)
+            return event
+        }
     }
 
     // MARK: - Option + Space Hold PTT
     private func installOptionSpaceHoldPTT() {
-        globalMonitorKeyDown = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        let handleKeyDown: (NSEvent) -> Void = { [weak self] event in
             DispatchQueue.main.async {
                 guard let self else { return }
                 if event.keyCode == UInt16(kVK_Space) && event.modifierFlags.contains(.option) {
@@ -114,13 +136,25 @@ final class FocusedInputBridge: ObservableObject {
             }
         }
 
-        globalMonitorKeyUp = NSEvent.addGlobalMonitorForEvents(matching: .keyUp) { [weak self] event in
+        let handleKeyUp: (NSEvent) -> Void = { [weak self] event in
             DispatchQueue.main.async {
                 guard let self else { return }
                 if (event.keyCode == UInt16(kVK_Space) || event.keyCode == UInt16(kVK_Option)) && self.isPTTActive {
                     self.stopPTTSessionAndPaste()
                 }
             }
+        }
+
+        globalMonitorKeyDown = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: handleKeyDown)
+        localMonitorKeyDown = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            handleKeyDown(event)
+            return event
+        }
+
+        globalMonitorKeyUp = NSEvent.addGlobalMonitorForEvents(matching: .keyUp, handler: handleKeyUp)
+        localMonitorKeyUp = NSEvent.addLocalMonitorForEvents(matching: .keyUp) { event in
+            handleKeyUp(event)
+            return event
         }
     }
 
