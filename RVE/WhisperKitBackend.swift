@@ -100,7 +100,7 @@ final class WhisperKitBackend: ObservableObject, SpeechBackend {
         isListening = false
         status = "⏳ Whisper AI 변환 중…"
 
-        let samples = whisperKit.audioProcessor.audioSamples
+        let samples = Array(whisperKit.audioProcessor.audioSamples)
         guard !samples.isEmpty else {
             status = "녹음된 음성이 없습니다"
             completion("")
