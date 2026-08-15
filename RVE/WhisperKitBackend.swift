@@ -7,7 +7,7 @@ final class WhisperKitBackend: ObservableObject, SpeechBackend {
     @Published private(set) var isListening = false
     @Published private(set) var status = "모델 준비 전"
     @Published private(set) var lastLatencyMS: Int?
-    @Published var modelName = "base"
+    @Published var modelName = "openai_whisper-large-v3-turbo"
 
     var onNaturalStop: (() -> Void)?
 
@@ -28,6 +28,9 @@ final class WhisperKitBackend: ObservableObject, SpeechBackend {
     private let voiceRMSFloor: Float = 0.022
     private let relativeVoiceFloor: Float = 0.3
 
+    /// Initial prompt guides Whisper towards natural Korean grammar, punctuation, and IT terms.
+    private let koreanPrompt = "다음은 한국어 음성 명령입니다. Claude, macOS, Swift, Python, API, 개발, 질문, 답변, 코드, 작성, 수정, 알려줘, 실행해 줘."
+
     func connect(to editor: EditorStateMachine) { self.editor = editor }
 
     func prepare() async {
@@ -36,7 +39,7 @@ final class WhisperKitBackend: ObservableObject, SpeechBackend {
             status = "마이크 권한이 필요합니다 · 시스템 설정 > 개인정보 보호 및 보안"
             return
         }
-        status = "WhisperKit 모델 로딩 중…"
+        status = "WhisperKit 모델 로딩 중 (\(modelName))…"
         do {
             let config = WhisperKitConfig(model: modelName)
             whisperKit = try await WhisperKit(config)
@@ -114,6 +117,10 @@ final class WhisperKitBackend: ObservableObject, SpeechBackend {
                     task: .transcribe,
                     language: "ko",
                     temperature: 0,
+                    temperatureFallbackCount: 2,
+                    sampleLength: 224,
+                    usePrefillPrompt: true,
+                    prompt: koreanPrompt,
                     skipSpecialTokens: true,
                     withoutTimestamps: true,
                     wordTimestamps: false
@@ -187,6 +194,10 @@ final class WhisperKitBackend: ObservableObject, SpeechBackend {
                 task: .transcribe,
                 language: "ko",
                 temperature: 0,
+                temperatureFallbackCount: 2,
+                sampleLength: 224,
+                usePrefillPrompt: true,
+                prompt: koreanPrompt,
                 skipSpecialTokens: true,
                 withoutTimestamps: true,
                 wordTimestamps: false
