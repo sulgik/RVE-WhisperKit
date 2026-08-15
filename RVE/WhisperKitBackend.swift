@@ -7,7 +7,7 @@ final class WhisperKitBackend: ObservableObject, SpeechBackend {
     @Published private(set) var isListening = false
     @Published private(set) var status = "모델 준비 전"
     @Published private(set) var lastLatencyMS: Int?
-    @Published var modelName = "large-v3-turbo"
+    @Published var modelName = "base"
 
     var onNaturalStop: (() -> Void)?
 
@@ -42,7 +42,15 @@ final class WhisperKitBackend: ObservableObject, SpeechBackend {
             whisperKit = try await WhisperKit(config)
             status = "준비됨 · \(modelName)"
         } catch {
-            status = "모델 로딩 실패: \(error.localizedDescription)"
+            status = "모델 \(modelName) 로딩 실패. base 모델로 자동 전환 중…"
+            do {
+                let fallbackConfig = WhisperKitConfig(model: "base")
+                whisperKit = try await WhisperKit(fallbackConfig)
+                modelName = "base"
+                status = "준비됨 · base"
+            } catch {
+                status = "모델 로딩 실패: \(error.localizedDescription)"
+            }
         }
     }
 

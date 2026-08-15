@@ -38,9 +38,9 @@ struct ContentView: View {
                 Text("base (기본)").tag("base")
                 Text("small (중급)").tag("small")
                 Text("medium (상급)").tag("medium")
-                Text("large-v3-turbo (✨ 최고성능 한국어)").tag("large-v3-turbo")
+                Text("large-v3 (✨ 최고성능)").tag("large-v3")
             }
-            .frame(width: 240)
+            .frame(width: 220)
             .disabled(speech.isListening)
             Button("모델 적용") { Task { await speech.reloadModel() } }
                 .disabled(speech.isListening)
