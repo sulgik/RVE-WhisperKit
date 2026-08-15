@@ -28,9 +28,6 @@ final class WhisperKitBackend: ObservableObject, SpeechBackend {
     private let voiceRMSFloor: Float = 0.022
     private let relativeVoiceFloor: Float = 0.3
 
-    /// Initial prompt guides Whisper towards natural Korean grammar, punctuation, and IT terms.
-    private let koreanPrompt = "다음은 한국어 음성 명령입니다. Claude, macOS, Swift, Python, API, 개발, 질문, 답변, 코드, 작성, 수정, 알려줘, 실행해 줘."
-
     func connect(to editor: EditorStateMachine) { self.editor = editor }
 
     func prepare() async {
@@ -117,10 +114,6 @@ final class WhisperKitBackend: ObservableObject, SpeechBackend {
                     task: .transcribe,
                     language: "ko",
                     temperature: 0,
-                    temperatureFallbackCount: 2,
-                    sampleLength: 224,
-                    usePrefillPrompt: true,
-                    prompt: koreanPrompt,
                     skipSpecialTokens: true,
                     withoutTimestamps: true,
                     wordTimestamps: false
@@ -194,10 +187,6 @@ final class WhisperKitBackend: ObservableObject, SpeechBackend {
                 task: .transcribe,
                 language: "ko",
                 temperature: 0,
-                temperatureFallbackCount: 2,
-                sampleLength: 224,
-                usePrefillPrompt: true,
-                prompt: koreanPrompt,
                 skipSpecialTokens: true,
                 withoutTimestamps: true,
                 wordTimestamps: false
