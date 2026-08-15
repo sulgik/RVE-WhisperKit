@@ -7,7 +7,7 @@ final class WhisperKitBackend: ObservableObject, SpeechBackend {
     @Published private(set) var isListening = false
     @Published private(set) var status = "모델 준비 전"
     @Published private(set) var lastLatencyMS: Int?
-    @Published var modelName = "openai_whisper-large-v3-turbo"
+    @Published var modelName = "large-v3-turbo"
 
     var onNaturalStop: (() -> Void)?
 

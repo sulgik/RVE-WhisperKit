@@ -34,11 +34,11 @@ struct ContentView: View {
             }
             Spacer()
             Picker("모델", selection: $speech.modelName) {
-                Text("tiny (테스트용)").tag("openai_whisper-tiny")
-                Text("base (기본)").tag("openai_whisper-base")
-                Text("small (중급)").tag("openai_whisper-small")
-                Text("medium (상급)").tag("openai_whisper-medium")
-                Text("large-v3-turbo (✨ 최고성능 한국어)").tag("openai_whisper-large-v3-turbo")
+                Text("tiny (테스트용)").tag("tiny")
+                Text("base (기본)").tag("base")
+                Text("small (중급)").tag("small")
+                Text("medium (상급)").tag("medium")
+                Text("large-v3-turbo (✨ 최고성능 한국어)").tag("large-v3-turbo")
             }
             .frame(width: 240)
             .disabled(speech.isListening)
